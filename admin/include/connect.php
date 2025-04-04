@@ -1,11 +1,9 @@
-<?php 
-$dsn = 'mysql:host=localhost;dbname=bdshop;charset=utf8';
-$username = 'root';
-$password = '';
+<?php
 
-try{
-$db = new PDO($dsn, $username, $password);
-}catch(Exception $e){
-    die ($e->getMessage());
+// Ce fichier sert à se connecter  la base de données
+
+try {
+  $db = new PDO("mysql:host=localhost;dbname=bdshop;charset=utf8", "root", "");
+} catch (exception $e) {
+  die($e->getMessage());
 }
-

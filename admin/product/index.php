@@ -1,120 +1,162 @@
 <?php
-require_once $_SERVER['DOCUMENT_ROOT'] . "/admin/include/function.php";
-require_once $_SERVER['DOCUMENT_ROOT'] . "/admin/include/protect.php";
-require_once $_SERVER['DOCUMENT_ROOT'] . "/admin/include/connect.php";
-require_once $_SERVER['DOCUMENT_ROOT'] . "/php/Product.class.php";
+// CETTE PAGE CORRESPOND AU READ DU CRUD
 
-// PAGINATION
+require_once $_SERVER["DOCUMENT_ROOT"] . "/admin/include/function.php";
+require_once $_SERVER["DOCUMENT_ROOT"] . "/admin/include/protect.php";
+require_once $_SERVER["DOCUMENT_ROOT"] . "/admin/include/connect.php";
+require_once $_SERVER["DOCUMENT_ROOT"] . "/php/Product.class.php";
 
-// Nombre de page via le dropdown
-$defaultPerPage = 20;
-$nbPerPage = filter_input(INPUT_GET, 'nbPerPage', FILTER_VALIDATE_INT) ?: $defaultPerPage;
-// Page actuellement sélectionnée
-$currentPage = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT) ?: 1;
-$offset = ($currentPage - 1) * $nbPerPage;
+// ///////////////////////////// RECUPERATION PAGES ///////////////////////////////////////////////////////////
 
-// définition des paramètres nécessaires pour la pagination
-$total_products_stmt = $db->prepare("SELECT COUNT(*) FROM table_product");
-$total_products_stmt->execute();
-$total_products = $total_products_stmt->fetch()[0];
-$total_pages = max(1, ceil($total_products / $nbPerPage));
-
-// RECHERCHE
-$sql = "SELECT * FROM table_product WHERE (1=1) ";
-$keyword = "";
-$bind = [];
-
-if(isset($_POST['keyword'])){
-    $keyword = $_POST['keyword'];
-}
-if (!empty($keyword)){
-    $sql .= "AND(product_name   LIKE :keyword1 COLLATE utf8mb3_general_ci
-             OR  product_serie  LIKE :keyword2 COLLATE utf8mb3_general_ci
-             OR  product_author LIKE :keyword3 COLLATE utf8mb3_general_ci
-             OR  product_slug   LIKE :keyword4 COLLATE utf8mb3_general_ci )
-            ";
-    $bind[":keyword1"]='%' . $keyword . '%';
-    $bind[":keyword2"]='%' . $keyword . '%';
-    $bind[":keyword3"]='%' . $keyword . '%';
-    $bind[":keyword4"]='%' . $keyword . '%';
+$total = 0;
+// On voudrait n'afficher que 50 articles pour chaque page. Cela sous entend 50 lignes + un offset correspondant au numéro de la page -1
+$nbPerPage = 30;
+// Si rien renseigné alors c'est la première page
+$currentPage = 1;
+// Sinon c'est une page précisée
+if (isset($_GET["page"])) {
+  $currentPage = $_GET["page"];
 }
 
-$sql .= "ORDER BY product_id DESC LIMIT :offset, :nbPerPage";
-
-// Requête PAGINATION + RECHERCHE
-$stmt = $db->prepare($sql);
-$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-$stmt->bindValue(':nbPerPage', $nbPerPage, PDO::PARAM_INT);
-if(!empty($keyword)){
-    foreach ($bind as $key=>$value) {
-        $stmt -> bindValue( $key,$value , PDO::PARAM_STR);
-    }
-}
+$stmt = $db->prepare("SELECT count(*) AS total FROM table_product");
 $stmt->execute();
+if ($rowTotal = $stmt->fetch()) {
+  $total = $rowTotal["total"];
+}
+
+// ///////////////////////////// RECUPERATION ARTICLES ///////////////////////////////////////////////////////////
+// On ajoute les critères de recherche présent dans le formulaire pour compléter la requête
+
+$sql = "SELECT * FROM table_product WHERE (1=1)";
+
+$bind    = [];
+$keyword = "";
+if (isset($_COOKIE["search_keyword"])) {
+  $keyword = $_COOKIE["search_keyword"];
+}
+
+if (! empty($keyword)) {
+  $sql .= " AND product_name LIKE :keyword COLLATE utf8mb3_general_ci
+            OR product_serie LIKE :keyword2 COLLATE utf8mb3_general_ci";
+  $bind["keyword"]  = "%" . $keyword . "%";
+  $bind["keyword2"] = "%" . $keyword . "%";
+}
+
+$sql .= " ORDER BY product_id ASC LIMIT :offset, :limit";
+$stmt = $db->prepare($sql);
+
+if (! empty($keyword)) {
+  foreach ($bind as $key => $value) {
+    $stmt->bindValue($key, $value);
+  }
+}
+
+$stmt->bindValue(":offset", ($currentPage - 1) * $nbPerPage, PDO::PARAM_INT);
+// Ici on est obligé de préciser avec PDO le type de valeur qu'on associe
+$stmt->bindValue(":limit", $nbPerPage, PDO::PARAM_INT);
+
+$stmt->execute();
+
 $recordset = $stmt->fetchAll();
+// recordset contient maintenant un tableau indexé de tableau associatif
+
 ?>
 
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Produits</title>
-    <link rel="stylesheet" href="index.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Produits</title>
 </head>
 
 <body>
-    <a href="../index.php" class="add-button">Retour</a><br><br>
+  <h1>Liste des produits</h1>
 
-    <!-- Barre de recherche -->
-    <form action="index.php" method="post">
-        <label for="keyword"></label>
-        <input type="text" name="keyword" id="keyword" value=<?= hsc($keyword);?>>
-        <input type="submit" value="Rechercher">
-    </form>
-    <br>
-    <!-- Lien de réinitialisation -->
-    <a href="index.php" class="add-button">Réinitialiser</a>
-    <!-- Dropdown nombre d'éléments par page -->
-    <form action="index.php" method="get" class="per-page-form">
-        <label for="nbPerPage">Éléments par page :</label>
-        <select name="nbPerPage" id="nbPerPage" onchange="this.form.submit()">
-            <?php foreach ([10, 20, 50, 100] as $value) { ?>
-                <option value="<?= $value ?>" <?= $nbPerPage == $value ? 'selected' : '' ?>><?= $value ?></option>
-            <?php } ?>
-        </select>
-    </form>
-    <div class="pagination">
-        <?= generatePagination($currentPage, $total_pages, $nbPerPage, $baseUrl = 'index.php', $param = "page") ?>
-    </div>
-    <table>
-        <tr>
-            <?php $columns = ["References" => "product_slug", "Date" => "product_date", "Titre" => "product_name", "Serie" => "product_serie", "Volume" => "product_volume", "Auteur" => "product_author", "Description" => "product_description", "Resume" => "product_resume", "Stock" => "product_stock", "Prix" => "product_price", "Publication" => "product_publisher", "Dessinateur" => "product_cartoonist"];
-            foreach ($columns as $label => $key) { ?>
-                <th><?= $label ?></th>
-            <?php } ?>
-            <th><a href="form.php" class="add-button">Ajouter</a></th>
-        </tr>
-        <?php foreach ($recordset as $row) {
-            $product = new Product($row);
-            ?>
-            <tr>
-                <?php foreach ($columns as $key) {
-                    $method  = 'get' . ucfirst(str_replace('product_','',$key));
-                     ?>
-                    <td><?= $product->{$method}(); ?></td>
-                <?php } ?>
-                <td class="action-links">
-                    <a href="form.php?id=<?= hsc($row['product_id']) ?>">Modif.</a>
-                    <a href="delete.php?id=<?= hsc($row['product_id']) ?>">Supp.</a>
-                </td>
-            </tr>
-        <?php } ?>
-    </table>
-    <div class="pagination">
-        <?= generatePagination($currentPage, $total_pages, $nbPerPage) ?>
-    </div>
+  <form action="search.php" method="post" class="search">
+    <input type="search" name="keyword" value="<?php echo hsc($keyword) ?>">
+    <input type="submit" value="Rechercher">
+  </form>
+  <a href="search.php?reset=1" class="button">Reset</a>
+  <a href="form.php" class="button">Ajouter</a>
+
+  <table>
+    <tr>
+
+      <th>id_produit</th>
+      <th>titre_produit</th>
+      <th>série_produit</th>
+      <th>photo_produit</th>
+      <th colspan="2">Action</th>
+    </tr>
+
+    <!-- On affiche ici les informations récupéré de la base de données -->
+    <?php
+    foreach ($recordset as $row) {
+      $product = new Product($row);
+    ?>
+      <tr>
+        <td> <?= $product->getId() ?> </td>
+        <td> <?= $product->getName() ?> </td>
+        <td> <?= $product->getSerie() ?> </td>
+        <td> <?= hsc($row["product_image"]); ?> </td>
+        <!-- Rappel: chemin relatif s'écrit sans "/", absolu commence par un "/" -->
+        <td> <a href="form.php?id=<?= hsc($row['product_id']) ?>">Modif</a> </td>
+        <!-- La méthode get s'écrit avec un ? pour ajouter derrière les informations -->
+        <td> <a href="delete.php?id=<?= hsc($row['product_id']) ?>">Supp</a> </td>
+      </tr>
+    <?php } ?>
+
+  </table>
+  <style>
+    .search {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    .search>* {
+      margin: 0 10px;
+    }
+
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      padding: 0;
+      list-style: none;
+    }
+
+    .pagination>li {
+      width: 25px;
+    }
+
+    table {
+      margin-top: 10px;
+      width: 100%;
+    }
+
+    table>tbody>tr>td,
+    table>tbody>tr>th {
+      padding: 10px;
+      border: 1px solid;
+    }
+
+    .button {
+      border: 1px solid grey;
+      background-color: lightblue;
+      border-radius: 5px;
+      text-align: center;
+      padding: 5px;
+    }
+  </style>
+
+
+  <?php displayPagination(ceil($total / $nbPerPage), $currentPage) ?>
+
+  <a href="index.php" class="button">Retour en haut</a>
+
 </body>
 
 </html>
