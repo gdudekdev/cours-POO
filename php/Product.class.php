@@ -19,9 +19,6 @@ class Product
       protected ?string $cartoonist;
 
 
-
-      
-
       public function __construct($data = false)
       {
             if ($data) {
