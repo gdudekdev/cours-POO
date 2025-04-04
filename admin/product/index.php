@@ -2,7 +2,7 @@
 require_once $_SERVER['DOCUMENT_ROOT'] . "/admin/include/function.php";
 require_once $_SERVER['DOCUMENT_ROOT'] . "/admin/include/protect.php";
 require_once $_SERVER['DOCUMENT_ROOT'] . "/admin/include/connect.php";
-
+require_once $_SERVER['DOCUMENT_ROOT'] . "/php/Product.class.php";
 
 // PAGINATION
 
@@ -18,7 +18,6 @@ $total_products_stmt = $db->prepare("SELECT COUNT(*) FROM table_product");
 $total_products_stmt->execute();
 $total_products = $total_products_stmt->fetch()[0];
 $total_pages = max(1, ceil($total_products / $nbPerPage));
-
 
 // RECHERCHE
 $sql = "SELECT * FROM table_product WHERE (1=1) ";
@@ -40,7 +39,6 @@ if (!empty($keyword)){
     $bind[":keyword4"]='%' . $keyword . '%';
 }
 
-
 $sql .= "ORDER BY product_id DESC LIMIT :offset, :nbPerPage";
 
 // Requête PAGINATION + RECHERCHE
@@ -55,7 +53,6 @@ if(!empty($keyword)){
 $stmt->execute();
 $recordset = $stmt->fetchAll();
 ?>
-
 
 <!DOCTYPE html>
 <html lang="fr">
@@ -99,10 +96,14 @@ $recordset = $stmt->fetchAll();
             <?php } ?>
             <th><a href="form.php" class="add-button">Ajouter</a></th>
         </tr>
-        <?php foreach ($recordset as $row) { ?>
+        <?php foreach ($recordset as $row) {
+            $product = new Product($row);
+            ?>
             <tr>
-                <?php foreach ($columns as $key) { ?>
-                    <td><?= hsc($row[$key]) ?></td>
+                <?php foreach ($columns as $key) {
+                    $method  = 'get' . ucfirst(str_replace('product_','',$key));
+                     ?>
+                    <td><?= $product->{$method}(); ?></td>
                 <?php } ?>
                 <td class="action-links">
                     <a href="form.php?id=<?= hsc($row['product_id']) ?>">Modif.</a>

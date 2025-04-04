@@ -1,5 +1,4 @@
 <?php 
-var_dump($_SERVER['DOCUMENT_ROOT']);
 require_once $_SERVER['DOCUMENT_ROOT'] . "/admin/include/protect.php";
 ?>
 
